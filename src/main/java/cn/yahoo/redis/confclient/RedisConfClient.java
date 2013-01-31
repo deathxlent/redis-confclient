@@ -11,18 +11,23 @@ import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Joiner;
 import com.netflix.curator.RetryPolicy;
 import com.netflix.curator.framework.CuratorFramework;
 import com.netflix.curator.framework.CuratorFrameworkFactory;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
 
+/**
+ *
+ * @author guangyi.kou
+ */
 public class RedisConfClient {
 	private static Logger log = LoggerFactory.getLogger(RedisConfClient.class);
 	private static String[] groups = null;// groups
-	private static String zookeeperConnectionString = "";// zkÁ´½Ó
+	private static String zookeeperConnectionString = "";// zké“¾æ¥
 	private static String app = "";// appname
 	private static String groupPath = "/redis/";
-	private static String filename = "";// ÅäÖÃÎÄ¼şµØÖ·
+	private static String filename = "";// é…ç½®æ–‡ä»¶åœ°å€
 	private static CuratorFramework client = null;
 	private static RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000,
 			3);
@@ -31,9 +36,9 @@ public class RedisConfClient {
 		public void process(WatchedEvent event) {
 			System.out.println("event:" + event.getType() + " path:"
 					+ event.getPath());
-			// ¼ÌĞø¹Û²ì
+			// ç»§ç»­è§‚å¯Ÿ
 			groups = addAppWatcher();
-			// ÖØĞÂ¹Ø×¢ groups
+			// é‡æ–°å…³æ³¨ groups
 			writeConf();
 		}
 	};
@@ -44,31 +49,31 @@ public class RedisConfClient {
 	 */
 	public static void main(String[] args) {
 		if (args == null || args.length != 4) {
-			log.error("²ÎÊıÓĞÎó£¡");
+			log.error("å‚æ•°æœ‰è¯¯ï¼");
 			System.exit(0);
 		}
 		zookeeperConnectionString = args[0];
 		app = args[1];
 		PropertyConfigurator.configure(args[2]);
 		filename = args[3];
-		// 1.³õÊ¼»¯
-		log.info("¿ªÊ¼´´½¨½Úµã...");
+		// 1.åˆå§‹åŒ–
+		log.info("å¼€å§‹åˆå§‹åŒ–...");
 		client = init();
 		if (client == null) {
-			log.error("zkÁ¬½Ó´´½¨ÓĞÎó£¡");
+			log.error("zkè¿æ¥åˆ›å»ºæœ‰è¯¯ï¼");
 			System.exit(0);
 		}
-		log.info("´´½¨½ÚµãÍê±Ï,¿ªÊ¼»ñÈ¡µ±Ç°×´Ì¬...");
-		// 2. get²¢watch app½Úµã
+		log.info("åˆå§‹åŒ–å®Œæ¯•,å¼€å§‹è·å–å½“å‰çŠ¶æ€...");
+		// 2. getå¹¶watch appèŠ‚ç‚¹
 		groups = addAppWatcher();
-		log.info("µÃµ½µ±Ç°groups£¬¿ªÊ¼watch²¢Ğ´ÅäÖÃ...");
-		// 3.get ²¢Ğ´conf£¬È»ºówatch
+		log.info("å¾—åˆ°å½“å‰groupsï¼Œå¼€å§‹watchå¹¶å†™é…ç½®...");
+		// 3.get å¹¶å†™confï¼Œç„¶åwatch
 		writeConf();
-		log.info("Ğ´ÅäÖÃÍê³É");
+		log.info("å†™é…ç½®å®Œæˆ");
 	}
 
 	/**
-	 * 1.³õÊ¼»¯
+	 * 1.åˆå§‹åŒ–
 	 *
 	 * @return
 	 */
@@ -85,7 +90,7 @@ public class RedisConfClient {
 	}
 
 	/**
-	 * 2. get²¢watch app½Úµã
+	 * 2. getå¹¶watch appèŠ‚ç‚¹
 	 *
 	 * @return
 	 */
@@ -104,29 +109,49 @@ public class RedisConfClient {
 	}
 
 	/**
-	 * 3.get ²¢Ğ´conf£¬È»ºówatch
+	 * 3.get å¹¶å†™confï¼Œç„¶åwatch
 	 */
 	private static void writeConf() {
 		StringBuilder sb = new StringBuilder();
 		String host = "";
+		String[] s = null;
+		String[] t = null;
 		if (groups != null && groups.length > 0) {
 			groupsWatchers = new ArrayList<Watcher>();
 			sb.append("<?php\r\n");
+			sb.append("$config['redis_target'] =array('");
+			sb.append(Joiner.on("','").join(groups));
+			sb.append("');\r\n");
+			sb.append("$config['redis_servers']=array(\r\n");
 			for (String g : groups) {
 				try {
 					List<String> it = client.getChildren().forPath(
 							groupPath + g);
 					Collections.sort(it);
-					for (int i = 0; i < it.size(); i++) {
+					if (it.size() == 1) {// åªæœ‰ä¸€ä¸ªèŠ‚ç‚¹
 						host = new String(client.getData().forPath(
-								groupPath + g + "/" + it.get(i)));
-						if (i == 0) {// master
-							sb.append("$redis['" + g + "_master']['host'] = \""
-									+ host + "\";\r\n");
-						} else {
-							sb.append("$redis['" + g + "_slave" + i
-									+ "']['host'] = \"" + host + "\";\r\n");
+								groupPath + g + "/" + it.get(0)));
+						t = host.split("_");
+						s = t[0].split(":");
+						sb.append("'" + g + "'=>array('host'=>'" + s[0]
+								+ "','port'=>" + s[1] + ",'s1_host'=>'" + s[0]
+								+ "','s1_port'=>" + s[1] + "),\r\n");
+					} else {
+						sb.append("'" + g + "'=>array(");
+						for (int i = 0; i < it.size(); i++) {
+							host = new String(client.getData().forPath(
+									groupPath + g + "/" + it.get(i)));
+							t = host.split("_");
+							s = t[0].split(":");
+							if (i == 0) {// Master
+								sb.append("'host'=>'" + s[0] + "','port'=>"
+										+ s[1]);
+							} else {// Slaves
+								sb.append(",'s" + i + "_host'=>'" + s[0]
+										+ "','s" + i + "_port'=>" + s[1]);
+							}
 						}
+						sb.append("),\r\n");
 					}
 					// watch
 					groupsWatchers.add(newGroupWatcher(groupPath + g));
@@ -134,7 +159,7 @@ public class RedisConfClient {
 					e.printStackTrace();
 				}
 			}
-			sb.append("?>");
+			sb.append(");?>");
 			try {
 				FileWriter fw = new FileWriter(filename);
 				fw.write(sb.toString());
@@ -146,7 +171,7 @@ public class RedisConfClient {
 	}
 
 	/**
-	 * ĞÂµÄ¶ÔgroupµÄwatcher
+	 * æ–°çš„å¯¹groupçš„watcher
 	 *
 	 * @param p
 	 * @return
@@ -157,10 +182,10 @@ public class RedisConfClient {
 			public void process(WatchedEvent event) {
 				System.out.println("event:" + event.getType() + " path:"
 						+ event.getPath());
-				// ¼ÌĞø¹Û²ì
+				// ç»§ç»­è§‚å¯Ÿ
 				groups = addAppWatcher();
-				// ÖØĞÂ¹Ø×¢ groups
-				// ÖØĞÂ¹Ø×¢ groups
+				// é‡æ–°å…³æ³¨ groups
+				// é‡æ–°å…³æ³¨ groups
 				writeConf();
 			}
 		};
